@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Paneli</title>
+    <style>
+        * { box-sizing: border-box; font-family: system-ui; }
+        body { background: #0a1f1b; margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: auto; background: #1e2f2a; border-radius: 32px; padding: 24px; color: white; }
+        h1, h2 { color: #f9b23f; }
+        input, button, select { padding: 10px; margin: 6px; border-radius: 40px; border: none; }
+        button { background: #f9b23f; font-weight: bold; cursor: pointer; }
+        .danger { background: #c13b3b; color: white; }
+        .user-card { background: #2e4940; border-radius: 24px; padding: 12px; margin: 12px 0; }
+        .flex { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        hr { border-color: #3b5b52; }
+        .request-card { background: #3b5b52; border-radius: 16px; padding: 12px; margin: 10px 0; border-left: 4px solid #f9b23f; }
+        .approve-btn { background: #4caf50; color: white; }
+        .reject-btn { background: #f44336; color: white; }
+        .total-balance { background: #f9b23f; color: #1e2f2a; padding: 16px; border-radius: 24px; text-align: center; margin-bottom: 20px; }
+        .total-balance span { font-size: 2rem; font-weight: bold; display: block; }
+        .loading { text-align: center; padding: 40px; color: #f9b23f; }
+        .refresh-btn { background: #2196f3; color: white; margin-left: 10px; }
+    </style>
+</head>
+<body>
+<div class="container" id="adminApp">
+    <div class="loading">🔥 Firebase bağlanıyor...</div>
+</div>
+
+<script type="module">
+    // ============ FIREBASE IMPORTS ============
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, get, set, update, push, onValue, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+    
+    // Firebase yapılandırması
+    const firebaseConfig = {
+        apiKey: "AIzaSyDJxVfri7sLN_ThRWrnU9Xm0glmfY5zDrw",
+        authDomain: "hediye-ee889.firebaseapp.com",
+        projectId: "hediye-ee889",
+        storageBucket: "hediye-ee889.firebasestorage.app",
+        messagingSenderId: "1000489458750",
+        appId: "1:1000489458750:web:45a4b313402679d273456f",
+        measurementId: "G-Q5LT3EFRM4"
+    };
+    
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    
+    // ============ ÇOKLU ADMINLER ============
+    const ADMINS = {
+        "hemede": "werıngu56!",
+        "xiyaro": "seydo4756",
+        "kirukuz": "karkir98?",
+        "xebat": "werıngu56!",
+        "lawma": "gunehemed3145!",
+        "bondo": "bedre472131?"
+    };
+    
+    const VIP_PERCENTS = { 1: 20, 2: 25, 3: 30, 4: 35, 5: 40 };
+    
+    let logged = false;
+    let users = [];
+    let depositRequests = [];
+    let withdrawRequests = [];
+    let unsubscribeUsers = null;
+    let unsubscribeDeposits = null;
+    let unsubscribeWithdraws = null;
+    
+    // ============ YARDIMCI FONKSİYONLAR ============
+    function encodeEmail(email) {
+        return email.replace(/\./g, ',').replace(/#/g, '_').replace(/\$/g, '_').replace(/\[/g, '_').replace(/\]/g, '_');
+    }
+    
+    function getTotalSystemBalance() {
+        return users.reduce((total, user) => total + (user.balance || 0), 0);
+    }
+    
+    async function recalcVip(userEmail, currentVip, totalInvested) {
+        let vip = 0;
+        if (totalInvested >= 6000) vip = 5;
+        else if (totalInvested >= 3000) vip = 4;
+        else if (totalInvested >= 1200) vip = 3;
+        else if (totalInvested >= 500) vip = 2;
+        else if (totalInvested >= 200) vip = 1;
+        
+        if (currentVip !== vip) {
+            const userRef = ref(db, 'users/' + encodeEmail(userEmail));
+            await update(userRef, { vip: vip });
+            
+            if (vip > currentVip && vip > 0) {
+                await addFeedMessageAdmin(`🎉 ${userEmail} VIP ${vip} oldu!`, "vip");
+            }
+        }
+        return vip;
+    }
+    
+    async function addFeedMessageAdmin(text, type = "info") {
+        let typeClass = "";
+        if (type === "withdraw") typeClass = "feed-withdraw";
+        else if (type === "join") typeClass = "feed-join";
+        else if (type === "vip") typeClass = "feed-vip";
+        
+        try {
+            const feedRef = ref(db, 'feed');
+            await push(feedRef, {
+                text: text,
+                typeClass: typeClass,
+                type: type,
+                time: Date.now()
+            });
+        } catch (error) {
+            console.error("Feed eklenirken hata:", error);
+        }
+    }
+    
+    // ============ FIREBASE VERİ DİNLEME ============
+    function startRealtimeListeners() {
+        if (unsubscribeUsers) unsubscribeUsers();
+        const usersRef = ref(db, 'users');
+        unsubscribeUsers = onValue(usersRef, (snapshot) => {
+            users = [];
+            snapshot.forEach(child => {
+                users.push({ id: child.key, ...child.val() });
+            });
+            if (logged) renderAdmin();
+        });
+        
+        if (unsubscribeDeposits) unsubscribeDeposits();
+        const depositsRef = ref(db, 'deposit_requests');
+        unsubscribeDeposits = onValue(depositsRef, (snapshot) => {
+            depositRequests = [];
+            snapshot.forEach(child => {
+                depositRequests.push({ id: child.key, ...child.val() });
+            });
+            if (logged) renderAdmin();
+        });
+        
+        if (unsubscribeWithdraws) unsubscribeWithdraws();
+        const withdrawsRef = ref(db, 'withdraw_requests');
+        unsubscribeWithdraws = onValue(withdrawsRef, (snapshot) => {
+            withdrawRequests = [];
+            snapshot.forEach(child => {
+                withdrawRequests.push({ id: child.key, ...child.val() });
+            });
+            if (logged) renderAdmin();
+        });
+    }
+    
+    // ============ ADMIN İŞLEMLERİ ============
+    async function approveDepositRequest(requestId) {
+        const request = depositRequests.find(r => r.id === requestId);
+        if (!request || request.status !== "beklemede") return;
+        
+        const userRef = ref(db, 'users/' + encodeEmail(request.userEmail));
+        const userSnap = await get(userRef);
+        
+        if (userSnap.exists()) {
+            const user = userSnap.val();
+            const newBalance = (user.balance || 0) + request.amount;
+            const newTotalInvested = (user.totalInvested || 0) + request.amount;
+            
+            const transactions = user.transactions || [];
+            transactions.unshift({ 
+                type: "yatırım", 
+                amount: request.amount, 
+                date: `${request.tarih} ${request.saat}`,
+                status: "onaylandı"
+            });
+            
+            await update(userRef, {
+                balance: newBalance,
+                totalInvested: newTotalInvested,
+                transactions: transactions
+            });
+            
+            await recalcVip(request.userEmail, user.vip || 0, newTotalInvested);
+        }
+        
+        const requestRef = ref(db, 'deposit_requests/' + requestId);
+        await update(requestRef, { status: "onaylandı" });
+        
+        await addFeedMessageAdmin(`💰 ${request.fullName} ${request.amount.toLocaleString()} TL yatırımı onaylandı`, "info");
+        
+        renderAdmin();
+    }
+    
+    async function rejectDepositRequest(requestId) {
+        const requestRef = ref(db, 'deposit_requests/' + requestId);
+        await update(requestRef, { status: "reddedildi" });
+        renderAdmin();
+    }
+    
+    async function approveWithdrawRequest(requestId) {
+        const request = withdrawRequests.find(r => r.id === requestId);
+        if (!request || request.status !== "beklemede") return;
+        
+        const userRef = ref(db, 'users/' + encodeEmail(request.userEmail));
+        const userSnap = await get(userRef);
+        
+        if (userSnap.exists()) {
+            const user = userSnap.val();
+            if ((user.balance || 0) >= request.amount) {
+                const newBalance = (user.balance || 0) - request.amount;
+                
+                const transactions = user.transactions || [];
+                const tx = transactions.find(t => t.type === "çekim_talebi" && t.status === "beklemede" && t.amount === request.amount);
+                if (tx) tx.status = "onaylandı";
+                
+                await update(userRef, {
+                    balance: newBalance,
+                    transactions: transactions
+                });
+            }
+        }
+        
+        const requestRef = ref(db, 'withdraw_requests/' + requestId);
+        await update(requestRef, { status: "onaylandı" });
+        
+        await addFeedMessageAdmin(`📤 ${request.fullName} ${request.amount.toLocaleString()} TL çekimi onaylandı - IBAN: ${(request.iban || "").slice(0,10)}...`, "withdraw");
+        
+        renderAdmin();
+    }
+    
+    async function rejectWithdrawRequest(requestId) {
+        const requestRef = ref(db, 'withdraw_requests/' + requestId);
+        await update(requestRef, { status: "reddedildi" });
+        renderAdmin();
+    }
+    
+    async function addBalanceToUser(email) {
+        const amountInput = document.getElementById(`amount_${email.replace(/[.]/g, '_')}`);
+        const amount = parseFloat(amountInput?.value);
+        
+        if (!amount || amount <= 0) {
+            alert("Geçerli bir miktar girin");
+            return;
+        }
+        
+        const userRef = ref(db, 'users/' + encodeEmail(email));
+        const userSnap = await get(userRef);
+        
+        if (userSnap.exists()) {
+            const user = userSnap.val();
+            const newBalance = (user.balance || 0) + amount;
+            const newTotalInvested = (user.totalInvested || 0) + amount;
+            
+            await update(userRef, {
+                balance: newBalance,
+                totalInvested: newTotalInvested
+            });
+            
+            await recalcVip(email, user.vip || 0, newTotalInvested);
+            renderAdmin();
+        } else {
+            alert("Kullanıcı bulunamadı");
+        }
+    }
+    
+    async function subBalanceFromUser(email) {
+        const amountInput = document.getElementById(`amount_${email.replace(/[.]/g, '_')}`);
+        const amount = parseFloat(amountInput?.value);
+        
+        if (!amount || amount <= 0) {
+            alert("Geçerli bir miktar girin");
+            return;
+        }
+        
+        const userRef = ref(db, 'users/' + encodeEmail(email));
+        const userSnap = await get(userRef);
+        
+        if (userSnap.exists()) {
+            const user = userSnap.val();
+            if ((user.balance || 0) >= amount) {
+                const newBalance = (user.balance || 0) - amount;
+                await update(userRef, { balance: newBalance });
+                renderAdmin();
+            } else {
+                alert("Yetersiz bakiye");
+            }
+        } else {
+            alert("Kullanıcı bulunamadı");
+        }
+    }
+    
+    async function giveWeeklyEarning(email) {
+        const userRef = ref(db, 'users/' + encodeEmail(email));
+        const userSnap = await get(userRef);
+        
+        if (!userSnap.exists()) {
+            alert("Kullanıcı bulunamadı");
+            return;
+        }
+        
+        const user = userSnap.val();
+        if (!user.vip || user.vip === 0) {
+            alert("VIP seviyesi yok");
+            return;
+        }
+        
+        const percent = VIP_PERCENTS[user.vip];
+        const earn = Math.floor((user.balance || 0) * percent / 100);
+        
+        if (earn <= 0) {
+            alert("Kazanç miktarı 0'dan büyük olmalı");
+            return;
+        }
+        
+        const transactions = user.transactions || [];
+        transactions.unshift({ 
+            type: "haftalık_kazanç", 
+            amount: earn, 
+            percent: percent, 
+            date: new Date().toLocaleString(),
+            status: "onaylandı"
+        });
+        
+        await update(userRef, {
+            balance: (user.balance || 0) + earn,
+            transactions: transactions
+        });
+        
+        await addFeedMessageAdmin(`🎁 ${user.name} kullanıcısına ${earn.toLocaleString()} TL haftalık kazanç verildi (VIP ${user.vip} - %${percent})`, "info");
+        
+        renderAdmin();
+        alert(`Haftalık kazanç eklendi: ${earn.toLocaleString()} TL`);
+    }
+    
+    // ============ RENDER FONKSİYONU ============
+    function renderAdmin() {
+        const app = document.getElementById("adminApp");
+        if (!logged) {
+            app.innerHTML = `
+                <div style="background:#1e2f2a; padding:32px; border-radius:32px;">
+                    <h1>🔐 Admin Girişi</h1>
+                    <input type="text" id="admUser" placeholder="Kullanıcı adı">
+                    <input type="password" id="admPass" placeholder="Şifre">
+                    <button id="loginBtn">Giriş Yap</button>
+                    <div style="margin-top: 16px; font-size: 12px; opacity: 0.7; text-align: center;">
+                    </div>
+                </div>
+            `;
+            document.getElementById("loginBtn").onclick = async () => {
+                const username = document.getElementById("admUser").value;
+                const password = document.getElementById("admPass").value;
+                
+                if (ADMINS[username] && ADMINS[username] === password) {
+                    logged = true;
+                    startRealtimeListeners();
+                    renderAdmin();
+                } else {
+                    alert("❌ Hatalı kullanıcı adı veya şifre!");
+                }
+            };
+            return;
+        }
+        
+        users.forEach(async (user) => {
+            await recalcVip(user.email, user.vip || 0, user.totalInvested || 0);
+        });
+        
+        const totalBalance = getTotalSystemBalance();
+        
+        let pendingDeposits = depositRequests.filter(r => r.status === "beklemede");
+        let depositHtml = pendingDeposits.length === 0 ? "<div class='user-card'>📭 Bekleyen para yatırma talebi yok</div>" : 
+            pendingDeposits.map(req => `
+                <div class="request-card">
+                    <div><strong>👤 ${req.fullName}</strong> (${req.userEmail})</div>
+                    <div>💰 Tutar: ${(req.amount || 0).toLocaleString()} TL</div>
+                    <div>🕐 Tarih: ${req.tarih} - ${req.saat}</div>
+                    <div class="flex" style="margin-top:8px;">
+                        <button onclick="window.approveDeposit('${req.id}')" class="approve-btn">✅ Onayla</button>
+                        <button onclick="window.rejectDeposit('${req.id}')" class="reject-btn">❌ Reddet</button>
+                    </div>
+                </div>
+            `).join("");
+        
+        let pendingWithdraws = withdrawRequests.filter(r => r.status === "beklemede");
+        let withdrawHtml = pendingWithdraws.length === 0 ? "<div class='user-card'>📭 Bekleyen çekim talebi yok</div>" :
+            pendingWithdraws.map(req => `
+                <div class="request-card">
+                    <div><strong>👤 ${req.fullName}</strong> (${req.userEmail})</div>
+                    <div>📤 Tutar: ${(req.amount || 0).toLocaleString()} TL</div>
+                    <div>🏦 IBAN: ${req.iban || "Belirtilmemiş"}</div>
+                    <div>🕐 Tarih: ${req.tarih} - ${req.saat}</div>
+                    <div class="flex" style="margin-top:8px;">
+                        <button onclick="window.approveWithdraw('${req.id}')" class="approve-btn">✅ Onayla</button>
+                        <button onclick="window.rejectWithdraw('${req.id}')" class="reject-btn">❌ Reddet</button>
+                    </div>
+                </div>
+            `).join("");
+        
+        let userListHtml = users.map(user => `
+            <div class="user-card">
+                <div class="flex"><b>${user.name || "İsimsiz"}</b> (${user.email}) | VIP: ${user.vip || 0} | Bakiye: ${(user.balance || 0).toLocaleString()} TL | Yatırım: ${(user.totalInvested || 0).toLocaleString()} TL</div>
+                <div class="flex">
+                    <input type="number" id="amount_${user.email.replace(/[.]/g, '_')}" placeholder="Miktar" style="width:120px">
+                    <button onclick="window.addBalance('${user.email}')">➕ Bakiye Ekle</button>
+                    <button onclick="window.subBalance('${user.email}')" class="danger">➖ Bakiye Çıkar</button>
+                    <button onclick="window.giveWeekly('${user.email}')">🎁 Haftalık Kazanç Ver</button>
+                </div>
+            </div>
+        `).join("");
+        
+        app.innerHTML = `
+            <h1>👑 Admin Paneli</h1>
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <button onclick="window.logout()" class="danger">Çıkış</button>
+                <button onclick="window.refreshData()" class="refresh-btn">🔄 Yenile</button>
+            </div>
+            <div class="total-balance">
+                💰 TOPLAM SİSTEM BAKİYESİ
+                <span>${totalBalance.toLocaleString()} TL</span>
+            </div>
+            <hr>
+            <h2>💰 Bekleyen Para Yatırma Talepleri (${pendingDeposits.length})</h2>
+            ${depositHtml}
+            <hr>
+            <h2>📤 Bekleyen Para Çekme Talepleri (${pendingWithdraws.length})</h2>
+            ${withdrawHtml}
+            <hr>
+            <h2>👥 Tüm Kullanıcılar (${users.length})</h2>
+            ${userListHtml}
+        `;
+        
+        window.approveDeposit = approveDepositRequest;
+        window.rejectDeposit = rejectDepositRequest;
+        window.approveWithdraw = approveWithdrawRequest;
+        window.rejectWithdraw = rejectWithdrawRequest;
+        window.addBalance = addBalanceToUser;
+        window.subBalance = subBalanceFromUser;
+        window.giveWeekly = giveWeeklyEarning;
+        window.logout = () => { 
+            logged = false; 
+            if (unsubscribeUsers) unsubscribeUsers();
+            if (unsubscribeDeposits) unsubscribeDeposits();
+            if (unsubscribeWithdraws) unsubscribeWithdraws();
+            renderAdmin(); 
+        };
+        window.refreshData = async () => {
+            renderAdmin();
+            alert("Veriler yenilendi!");
+        };
+    }
+    
+    renderAdmin();
+</script>
+</body>
+</html>
