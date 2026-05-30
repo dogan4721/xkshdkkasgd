@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>Kullanıcı Paneli - Canlı Akış | Kazanç Simülasyonu</title>
+    <title>CashPro Görev Platformu</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+
     <style>
         * {
             margin: 0;
@@ -107,7 +109,6 @@
             .menu-item { padding: 8px 16px; margin: 0; background: #2e4940; border-radius: 40px; }
             .logout-side { margin: 0; padding: 8px 20px; width: auto; }
             .main-content { max-width: 100%; padding: 16px; }
-            .main-content.full-width { max-width: 100%; }
         }
 
         .card {
@@ -294,11 +295,20 @@
             text-align: center;
             border: 2px solid #e2e8e0;
             transition: 0.2s;
+            cursor: pointer;
+        }
+        .vip-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
         }
         .vip-card.current-vip {
             border-color: #f9b23f;
             background: #fff9e6;
             box-shadow: 0 4px 15px rgba(249, 178, 63, 0.2);
+        }
+        .vip-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
         }
         .vip-card h3 {
             font-size: 28px;
@@ -454,14 +464,14 @@
     const appFirebase = initializeApp(firebaseConfig);
     const db = getDatabase(appFirebase);
     
-    // VIP seviye bilgileri - SADECE MİNİMUM BAKİYE ŞARTI, PARA GİTMİYOR!
+    // VIP seviye bilgileri - fotoğraftaki gibi
     const VIP_LEVELS = {
-        1: { name: "VIP1", minBalance: 300, commission: 2.4, orderCount: 10 },
-        2: { name: "VIP2", minBalance: 500, commission: 2.8, orderCount: 26 },
-        3: { name: "VIP3", minBalance: 1500, commission: 3.0, orderCount: 45 },
-        4: { name: "VIP4", minBalance: 4000, commission: 3.2, orderCount: 70 },
-        5: { name: "VIP5", minBalance: 12000, commission: 3.4, orderCount: 100 },
-        6: { name: "VIP6", minBalance: 25000, commission: 3.6, orderCount: 150 }
+        1: { name: "VIP1", icon: "🥉", minBalance: 300, commission: 2.4, orderCount: 10 },
+        2: { name: "VIP2", icon: "🥈", minBalance: 500, commission: 2.8, orderCount: 26 },
+        3: { name: "VIP3", icon: "🥇", minBalance: 1500, commission: 3.0, orderCount: 45 },
+        4: { name: "VIP4", icon: "💎", minBalance: 4000, commission: 3.2, orderCount: 70 },
+        5: { name: "VIP5", icon: "👑", minBalance: 12000, commission: 3.4, orderCount: 100 },
+        6: { name: "VIP6", icon: "🏆", minBalance: 25000, commission: 3.6, orderCount: 150 }
     };
     
     let currentUser = null;
@@ -475,7 +485,6 @@
     let totalMembers = 259800;
     let totalPaid = 187200;
     
-    // ============ FEED FONKSİYONLARI ============
     async function loadFeedFromFirebase() {
         try {
             const feedRef = ref(db, 'feed');
@@ -522,7 +531,6 @@
     
     function escapeHtml(str) { return str.replace(/[&<>]/g, function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
     
-    // ============ SİMÜLASYON ============
     function randomWithdrawSimulation() {
         const randomAmount = Math.floor(Math.random() * 12000) + 70;
         const randomPhone = "+90 " + Math.floor(Math.random() * 9000000000 + 1000000000).toString().slice(0, 3) + "****" + Math.floor(Math.random() * 90 + 10).toString();
@@ -557,10 +565,9 @@
         }
     }
     
-    // ============ FIREBASE VERİ İŞLEMLERİ ============
     function encodeEmail(email) { return email.replace(/\./g, ',').replace(/#/g, '_').replace(/\$/g, '_'); }
     
-    // HAFTALIK KOMİSYON EKLEME (PARA GİTMİYOR, EKLENİYOR)
+    // HAFTALIK KOMİSYON
     async function applyWeeklyCommission() {
         if (!currentUser) return;
         const userVip = currentUser.vip || 0;
@@ -580,27 +587,24 @@
         }
     }
     
-    // VIP YÜKSELTME - PARA GİTMİYOR, SADECE BAKİYE KONTROLÜ
+    // VIP YÜKSELTME - İstediğin seviyeyi seçebilirsin, bakiye yeterliyse direkt o seviyeye geçer
     async function upgradeVIP(targetLevel) {
         if (!currentUser) return { success: false, message: "Oturum hatası" };
-        const currentVip = currentUser.vip || 0;
-        if (targetLevel <= currentVip) return { success: false, message: "Zaten bu seviye veya daha yüksek seviyedesiniz!" };
         
         const vipInfo = VIP_LEVELS[targetLevel];
         if (!vipInfo) return { success: false, message: "Geçersiz VIP seviyesi" };
         
         const currentBalance = currentUser.balance || 0;
         if (currentBalance < vipInfo.minBalance) {
-            return { success: false, message: `Yetersiz bakiye! VIP${targetLevel} için minimum ${vipInfo.minBalance} TL gerekli. Lütfen para yatırın.` };
+            return { success: false, message: `Yetersiz bakiye! ${vipInfo.name} için minimum ${vipInfo.minBalance} TL gerekli.` };
         }
         
-        // PARAMIZ GİTMİYOR! Sadece VIP seviyesini güncelliyoruz, bakiye aynı kalıyor
         const userRef = ref(db, 'users/' + encodeEmail(currentUser.email));
         await update(userRef, { vip: targetLevel });
         
-        await addFeedMessage(`🎉 ${currentUser.name} VIP${targetLevel} seviyesine yükseldi! Haftalık komisyon: %${vipInfo.commission}`, "vip");
+        await addFeedMessage(`🎉 ${currentUser.name} ${vipInfo.name} seviyesine yükseldi! Haftalık komisyon: %${vipInfo.commission}`, "vip");
         
-        return { success: true, message: `Tebrikler! VIP${targetLevel} seviyesine yükseldiniz. Haftalık komisyon oranınız %${vipInfo.commission}. Paranız gitmedi, bakiyeniz aynı kaldı!` };
+        return { success: true, message: `${vipInfo.name} seviyesine yükseldiniz! Haftalık komisyon oranınız %${vipInfo.commission}` };
     }
     
     async function createDepositRequest(userEmail, fullName, amount) {
@@ -633,7 +637,7 @@
         return "Çekim talebi alındı, admin onaylayacak";
     }
     
-    // ============ PROMOSYON KODU (KALICI, HER KULLANICIYA ÖZEL) ============
+    // PROMOSYON KODU
     function generatePromoCode(email, name) {
         let code = (name.slice(0,3) + email.slice(0,5)).toUpperCase().replace(/[^A-Z0-9]/g, '');
         if(code.length < 6) code = code + Math.floor(Math.random()*9000+1000);
@@ -666,7 +670,7 @@
         return false;
     }
     
-    // ============ RENDER FONKSİYONLARI ============
+    // RENDER FONKSİYONLARI
     function renderHomeTab(user) {
         setTimeout(() => updateStatsUI(), 10);
         const currentVipInfo = user.vip && VIP_LEVELS[user.vip] ? VIP_LEVELS[user.vip] : null;
@@ -676,7 +680,7 @@
                 <button id="logoutBtn" class="logout-small danger-btn">Çıkış</button>
             </div>
             <div class="balance">💰 ${(user.balance || 0).toLocaleString()} TL</div>
-            <div class="info-box">⭐ VIP ${user.vip || '0'} — ${currentVipInfo ? `Haftalık komisyon: %${currentVipInfo.commission}` : "VIP yükselterek haftalık komisyon kazanın (para gitmez!)"}</div>
+            <div class="info-box">⭐ VIP ${user.vip || '0'} — ${currentVipInfo ? `Haftalık komisyon: %${currentVipInfo.commission}` : "VIP yükselterek haftalık komisyon kazanın"}</div>
             
             <div class="temu-stats-grid">
                 <div class="temu-stat-item"><div class="temu-stat-label">👤 Kullanıcı adı</div><div class="temu-stat-value">${user.name || user.email.split('@')[0]}</div></div>
@@ -690,23 +694,21 @@
             </div>
             
             <div class="home-stats"><div class="stats-container" id="statsContainer"></div></div>
-            <div class="info-box" style="text-align:center; background:#2e4940;">📡 Canlı akış! VIP yükseltmek PARA GİTMEZ, sadece minimum bakiye şartı aranır. Haftalık komisyonlar Pazar günleri eklenir.</div>
+            <div class="info-box" style="text-align:center; background:#2e4940;">📡 Canlı akış! VIP yükselterek haftalık komisyon kazanın. Komisyonlar her Pazar eklenir.</div>
         `;
     }
     
     function renderVIPUpgradeTab(user) {
-        const currentVip = user.vip || 0;
         let vipCardsHtml = '<div class="vip-levels-grid">';
         
         for (let i = 1; i <= 6; i++) {
             const vip = VIP_LEVELS[i];
-            const isCurrent = currentVip === i;
-            const isLocked = currentVip > i;
-            const canUpgrade = currentVip < i;
+            const isCurrent = user.vip === i;
             const hasEnoughBalance = (user.balance || 0) >= vip.minBalance;
             
             vipCardsHtml += `
-                <div class="vip-card ${isCurrent ? 'current-vip' : ''}">
+                <div class="vip-card ${isCurrent ? 'current-vip' : ''}" onclick="document.querySelector('.upgrade-btn-${i}')?.click()">
+                    <div class="vip-icon">${vip.icon}</div>
                     <h3>${vip.name}</h3>
                     <div class="vip-detail">
                         <span>Minimum bakiye</span>
@@ -721,8 +723,9 @@
                         <strong>${vip.orderCount}</strong>
                     </div>
                     ${isCurrent ? '<div class="current-badge">✅ Mevcut Seviyeniz</div>' : ''}
-                    ${canUpgrade ? `<button class="upgrade-btn" data-level="${i}" ${!hasEnoughBalance ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''}>👑 Hemen yükseltin ${!hasEnoughBalance ? '(Yetersiz bakiye)' : ''}</button>` : ''}
-                    ${isLocked ? '<div class="current-badge" style="background:#94a3b8;">🔒 Daha düşük seviye</div>' : ''}
+                    <button class="upgrade-btn upgrade-btn-${i}" data-level="${i}" ${!hasEnoughBalance ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''}>
+                        ${isCurrent ? 'Mevcut Seviye' : (hasEnoughBalance ? '👑 Hemen Yükselt' : '🔒 Yetersiz Bakiye')}
+                    </button>
                 </div>
             `;
         }
@@ -734,17 +737,16 @@
                 <button id="logoutBtn" class="logout-small danger-btn">Çıkış</button>
             </div>
             <div class="balance">💰 ${(user.balance || 0).toLocaleString()} TL</div>
-            <div class="info-box" style="background:#059669; color:white;">⭐ DİKKAT: VIP yükseltmek için PARA GİTMİYOR! Sadece minimum bakiye şartını sağlamanız yeterli.</div>
-            <div class="info-box">⭐ Mevcut VIP Seviyeniz: <strong>VIP${currentVip || 0}</strong> ${currentVip > 0 ? `(Komisyon: %${VIP_LEVELS[currentVip]?.commission || 0})` : "(Henüz VIP değilsiniz)"}</div>
+            <div class="info-box">⭐ Mevcut VIP Seviyeniz: <strong>VIP${user.vip || 0}</strong> ${user.vip > 0 ? `(${VIP_LEVELS[user.vip]?.icon} Komisyon: %${VIP_LEVELS[user.vip]?.commission || 0})` : ""}</div>
             <div class="vip-upgrade-section">
                 <h3 style="margin-bottom:10px;">📊 VIP Seviyeleri</h3>
                 ${vipCardsHtml}
                 <div class="info-box" style="margin-top:20px; background:#2e4940;">
                     💡 <strong>Nasıl çalışır?</strong><br>
-                    • VIP yükseltmek için SADECE minimum bakiyeye sahip olmanız yeterli, PARA HARCANMAZ!<br>
-                    • Örnek: VIP1 olmak için 300 TL bakiyeniz olması yeterli, para gitmez.<br>
-                    • Her VIP seviyesi haftalık komisyon oranınızı artırır!<br>
-                    • Komisyonlar her Pazar günü otomatik bakiyenize eklenir.
+                    • İstediğin VIP seviyesini seçebilirsin, yeterli bakiyen varsa direkt o seviyeye yükselirsin.<br>
+                    • Örnek: VIP5 olmak için 12.000 TL bakiyen olması yeterli.<br>
+                    • Her VIP seviyesi haftalık komisyon oranını artırır.<br>
+                    • Komisyonlar her Pazar günü otomatik bakiyene eklenir.
                 </div>
             </div>
         `;
@@ -754,7 +756,7 @@
         return `
             <div class="welcome-header"><h2>💰 Para Yatırma Talebi</h2><button id="logoutBtn" class="logout-small danger-btn">Çıkış</button></div>
             <div class="balance">💰 ${(user.balance || 0).toLocaleString()} TL</div>
-            <div class="info-box">⭐ VIP ${user.vip || '0'} | Yatırım yaparak VIP seviye atlayın (para gitmez, sadece bakiye şartı).</div>
+            <div class="info-box">⭐ VIP ${user.vip || '0'} | Yatırım yaparak VIP seviye atlayın.</div>
             <div class="info-box">🏦 Havale IBAN: <strong>TR73 0082 9000 0949 1370 0989 09</strong><br><small>Bu IBAN'a yatırım yapıp formu doldurun.</small></div>
             <hr>
             <h3>📝 Yatırım Talebi Formu</h3>
@@ -786,9 +788,9 @@
         return `
             <div class="welcome-header"><h2>👥 Arkadaş Davet Sistemi</h2><button id="logoutBtn" class="logout-small danger-btn">Çıkış</button></div>
             <div class="invite-section">
-                <div>🔑 <strong>Senin özel ve KALICI promosyon kodun:</strong></div>
+                <div>🔑 <strong>Senin özel promosyon kodun:</strong></div>
                 <div class="invite-code" style="font-size:24px; letter-spacing:2px;">${user.promoCode || "HATA"}</div>
-                <div>💡 Bu kod SADECE SANA ÖZEL ve asla değişmez! Arkadaşlarına gönder, kayıt olurken bu kodu girsinler.</div>
+                <div>💡 Bu kod SADECE SANA ÖZEL! Arkadaşlarına gönder, kayıt olurken bu kodu girsinler.</div>
                 <div style="margin:15px 0; padding:12px; background:#fef3c7; border-radius:16px;">
                     🎁 <strong>Nasıl çalışır?</strong><br>
                     Arkadaşın kayıt olurken senin promosyon kodunu girerse, hem sen hem arkadaşın <strong>₺50 bonus</strong> kazanır!
