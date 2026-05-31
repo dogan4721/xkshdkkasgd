@@ -2,18 +2,20 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <title>Admin Paneli</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>Admin Paneli | VIP Yönetim Sistemi</title>
     <style>
         * { box-sizing: border-box; font-family: system-ui; }
         body { background: #0a1f1b; margin: 0; padding: 20px; }
-        .container { max-width: 1000px; margin: auto; background: #1e2f2a; border-radius: 32px; padding: 24px; color: white; }
+        .container { max-width: 1200px; margin: auto; background: #1e2f2a; border-radius: 32px; padding: 24px; color: white; }
         h1, h2 { color: #f9b23f; }
         input, button, select { padding: 10px; margin: 6px; border-radius: 40px; border: none; }
-        button { background: #f9b23f; font-weight: bold; cursor: pointer; }
+        button { background: #f9b23f; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:active { transform: scale(0.97); }
         .danger { background: #c13b3b; color: white; }
-        .user-card { background: #2e4940; border-radius: 24px; padding: 12px; margin: 12px 0; }
+        .user-card { background: #2e4940; border-radius: 24px; padding: 16px; margin: 12px 0; }
         .flex { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-        hr { border-color: #3b5b52; }
+        hr { border-color: #3b5b52; margin: 20px 0; }
         .request-card { background: #3b5b52; border-radius: 16px; padding: 12px; margin: 10px 0; border-left: 4px solid #f9b23f; }
         .approve-btn { background: #4caf50; color: white; }
         .reject-btn { background: #f44336; color: white; }
@@ -21,6 +23,11 @@
         .total-balance span { font-size: 2rem; font-weight: bold; display: block; }
         .loading { text-align: center; padding: 40px; color: #f9b23f; }
         .refresh-btn { background: #2196f3; color: white; margin-left: 10px; }
+        .vip-badge { display: inline-block; background: #f9b23f; color: #1e2f2a; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; margin-left: 8px; }
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 20px 0; }
+        .stat-card { background: #2e4940; border-radius: 20px; padding: 15px; text-align: center; }
+        .stat-card .number { font-size: 28px; font-weight: bold; color: #f9b23f; }
+        .stat-card .label { font-size: 12px; opacity: 0.8; }
     </style>
 </head>
 <body>
@@ -47,7 +54,17 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     
-    // ============ ÇOKLU ADMINLER ============
+    // ============ VIP SEVİYELERİ (1-6) ============
+    const VIP_LEVELS = {
+        1: { name: "VIP1", minBalance: 300, commission: 2.4, icon: "🥉" },
+        2: { name: "VIP2", minBalance: 500, commission: 2.8, icon: "🥈" },
+        3: { name: "VIP3", minBalance: 1500, commission: 3.0, icon: "🥇" },
+        4: { name: "VIP4", minBalance: 4000, commission: 3.2, icon: "💎" },
+        5: { name: "VIP5", minBalance: 12000, commission: 3.4, icon: "👑" },
+        6: { name: "VIP6", minBalance: 25000, commission: 3.6, icon: "🏆" }
+    };
+    
+    // Admin hesapları
     const ADMINS = {
         "hemede": "werıngu56!",
         "xiyaro": "seydo4756",
@@ -56,8 +73,6 @@
         "lawma": "gunehemed3145!",
         "bondo": "bedre472131?"
     };
-    
-    const VIP_PERCENTS = { 1: 20, 2: 25, 3: 30, 4: 35, 5: 40 };
     
     let logged = false;
     let users = [];
@@ -72,24 +87,42 @@
         return email.replace(/\./g, ',').replace(/#/g, '_').replace(/\$/g, '_').replace(/\[/g, '_').replace(/\]/g, '_');
     }
     
+    function decodeEmail(encoded) {
+        return encoded.replace(/,/g, '.');
+    }
+    
     function getTotalSystemBalance() {
         return users.reduce((total, user) => total + (user.balance || 0), 0);
     }
     
+    function getTotalInvested() {
+        return users.reduce((total, user) => total + (user.totalInvested || 0), 0);
+    }
+    
+    function getUserCount() {
+        return users.length;
+    }
+    
+    function getVipCount(level) {
+        return users.filter(u => (u.vip || 0) === level).length;
+    }
+    
+    // VIP yeniden hesaplama (yeni sisteme göre)
     async function recalcVip(userEmail, currentVip, totalInvested) {
         let vip = 0;
-        if (totalInvested >= 6000) vip = 5;
-        else if (totalInvested >= 3000) vip = 4;
-        else if (totalInvested >= 1200) vip = 3;
+        if (totalInvested >= 25000) vip = 6;
+        else if (totalInvested >= 12000) vip = 5;
+        else if (totalInvested >= 4000) vip = 4;
+        else if (totalInvested >= 1500) vip = 3;
         else if (totalInvested >= 500) vip = 2;
-        else if (totalInvested >= 200) vip = 1;
+        else if (totalInvested >= 300) vip = 1;
         
         if (currentVip !== vip) {
             const userRef = ref(db, 'users/' + encodeEmail(userEmail));
             await update(userRef, { vip: vip });
             
             if (vip > currentVip && vip > 0) {
-                await addFeedMessageAdmin(`🎉 ${userEmail} VIP ${vip} oldu!`, "vip");
+                await addFeedMessageAdmin(`🎉 ${userEmail} ${VIP_LEVELS[vip]?.icon || ""} VIP ${vip} oldu! (Komisyon: %${VIP_LEVELS[vip]?.commission || 0})`, "vip");
             }
         }
         return vip;
@@ -217,7 +250,7 @@
         const requestRef = ref(db, 'withdraw_requests/' + requestId);
         await update(requestRef, { status: "onaylandı" });
         
-        await addFeedMessageAdmin(`📤 ${request.fullName} ${request.amount.toLocaleString()} TL çekimi onaylandı - IBAN: ${(request.iban || "").slice(0,10)}...`, "withdraw");
+        await addFeedMessageAdmin(`📤 ${request.fullName} ${request.amount.toLocaleString()} TL çekimi onaylandı`, "withdraw");
         
         renderAdmin();
     }
@@ -283,6 +316,7 @@
         }
     }
     
+    // Haftalık kazanç - VIP komisyon oranına göre hesapla
     async function giveWeeklyEarning(email) {
         const userRef = ref(db, 'users/' + encodeEmail(email));
         const userSnap = await get(userRef);
@@ -293,16 +327,25 @@
         }
         
         const user = userSnap.val();
-        if (!user.vip || user.vip === 0) {
-            alert("VIP seviyesi yok");
+        const userVip = user.vip || 0;
+        
+        if (userVip === 0) {
+            alert("VIP seviyesi yok! Önce VIP yükseltmeli.");
             return;
         }
         
-        const percent = VIP_PERCENTS[user.vip];
-        const earn = Math.floor((user.balance || 0) * percent / 100);
+        const vipInfo = VIP_LEVELS[userVip];
+        if (!vipInfo) {
+            alert("Geçersiz VIP seviyesi");
+            return;
+        }
+        
+        const percent = vipInfo.commission;
+        const balance = user.balance || 0;
+        const earn = balance * percent / 100;
         
         if (earn <= 0) {
-            alert("Kazanç miktarı 0'dan büyük olmalı");
+            alert("Kazanç miktarı 0'dan büyük olmalı (bakiye için)");
             return;
         }
         
@@ -311,19 +354,48 @@
             type: "haftalık_kazanç", 
             amount: earn, 
             percent: percent, 
+            vipLevel: userVip,
             date: new Date().toLocaleString(),
             status: "onaylandı"
         });
         
         await update(userRef, {
             balance: (user.balance || 0) + earn,
+            todayEarn: (user.todayEarn || 0) + earn,
+            totalEarn: (user.totalEarn || 0) + earn,
             transactions: transactions
         });
         
-        await addFeedMessageAdmin(`🎁 ${user.name} kullanıcısına ${earn.toLocaleString()} TL haftalık kazanç verildi (VIP ${user.vip} - %${percent})`, "info");
+        await addFeedMessageAdmin(`🎁 ${user.name} kullanıcısına ${earn.toFixed(2).toLocaleString()} TL haftalık kazanç verildi (${vipInfo.icon} ${vipInfo.name} - %${percent})`, "vip");
         
         renderAdmin();
-        alert(`Haftalık kazanç eklendi: ${earn.toLocaleString()} TL`);
+        alert(`✅ Haftalık kazanç eklendi: ${earn.toFixed(2).toLocaleString()} TL (${vipInfo.name} - %${percent} komisyon)`);
+    }
+    
+    // Direkt VIP yükseltme
+    async function setUserVip(email, vipLevel) {
+        const level = parseInt(vipLevel);
+        if (level < 0 || level > 6) {
+            alert("Geçersiz VIP seviyesi (0-6)");
+            return;
+        }
+        
+        const userRef = ref(db, 'users/' + encodeEmail(email));
+        const userSnap = await get(userRef);
+        
+        if (!userSnap.exists()) {
+            alert("Kullanıcı bulunamadı");
+            return;
+        }
+        
+        await update(userRef, { vip: level });
+        
+        if (level > 0) {
+            await addFeedMessageAdmin(`👑 ${email} kullanıcısı admin tarafından ${VIP_LEVELS[level]?.icon || ""} VIP ${level} yapıldı!`, "vip");
+        }
+        
+        renderAdmin();
+        alert(`✅ VIP seviyesi ${level} olarak güncellendi`);
     }
     
     // ============ RENDER FONKSİYONU ============
@@ -337,6 +409,7 @@
                     <input type="password" id="admPass" placeholder="Şifre">
                     <button id="loginBtn">Giriş Yap</button>
                     <div style="margin-top: 16px; font-size: 12px; opacity: 0.7; text-align: center;">
+                        VIP Yönetim Sistemi v2.0
                     </div>
                 </div>
             `;
@@ -355,11 +428,29 @@
             return;
         }
         
+        // Tüm kullanıcıların VIP seviyelerini güncelle
         users.forEach(async (user) => {
             await recalcVip(user.email, user.vip || 0, user.totalInvested || 0);
         });
         
         const totalBalance = getTotalSystemBalance();
+        const totalInvested = getTotalInvested();
+        const userCount = getUserCount();
+        
+        // VIP istatistikleri
+        let vipStatsHtml = '<div class="stat-grid">';
+        for (let i = 1; i <= 6; i++) {
+            const vip = VIP_LEVELS[i];
+            const count = getVipCount(i);
+            vipStatsHtml += `
+                <div class="stat-card">
+                    <div class="number">${vip.icon} ${count}</div>
+                    <div class="label">${vip.name} Kullanıcı</div>
+                    <div style="font-size:11px;">Komisyon: %${vip.commission}</div>
+                </div>
+            `;
+        }
+        vipStatsHtml += '</div>';
         
         let pendingDeposits = depositRequests.filter(r => r.status === "beklemede");
         let depositHtml = pendingDeposits.length === 0 ? "<div class='user-card'>📭 Bekleyen para yatırma talebi yok</div>" : 
@@ -390,39 +481,80 @@
                 </div>
             `).join("");
         
-        let userListHtml = users.map(user => `
+        let userListHtml = users.map(user => {
+            const userVip = user.vip || 0;
+            const vipInfo = VIP_LEVELS[userVip];
+            return `
             <div class="user-card">
-                <div class="flex"><b>${user.name || "İsimsiz"}</b> (${user.email}) | VIP: ${user.vip || 0} | Bakiye: ${(user.balance || 0).toLocaleString()} TL | Yatırım: ${(user.totalInvested || 0).toLocaleString()} TL</div>
                 <div class="flex">
-                    <input type="number" id="amount_${user.email.replace(/[.]/g, '_')}" placeholder="Miktar" style="width:120px">
+                    <div style="flex:2">
+                        <b>${user.name || "İsimsiz"}</b><br>
+                        <small>${user.email}</small>
+                        <div>
+                            <span class="vip-badge">${vipInfo ? vipInfo.icon + " " + vipInfo.name : "VIP Yok"}</span>
+                            <span style="margin-left:8px;">💰 ${(user.balance || 0).toLocaleString()} TL</span>
+                            <span style="margin-left:8px;">📊 Yatırım: ${(user.totalInvested || 0).toLocaleString()} TL</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex" style="margin-top:10px;">
+                    <input type="number" id="amount_${user.email.replace(/[.]/g, '_')}" placeholder="Miktar" style="width:100px">
                     <button onclick="window.addBalance('${user.email}')">➕ Bakiye Ekle</button>
                     <button onclick="window.subBalance('${user.email}')" class="danger">➖ Bakiye Çıkar</button>
                     <button onclick="window.giveWeekly('${user.email}')">🎁 Haftalık Kazanç Ver</button>
+                    <select id="vipSelect_${user.email.replace(/[.]/g, '_')}" style="width:100px;">
+                        <option value="0" ${userVip === 0 ? 'selected' : ''}>VIP 0</option>
+                        <option value="1" ${userVip === 1 ? 'selected' : ''}>VIP 1 (%2.4)</option>
+                        <option value="2" ${userVip === 2 ? 'selected' : ''}>VIP 2 (%2.8)</option>
+                        <option value="3" ${userVip === 3 ? 'selected' : ''}>VIP 3 (%3.0)</option>
+                        <option value="4" ${userVip === 4 ? 'selected' : ''}>VIP 4 (%3.2)</option>
+                        <option value="5" ${userVip === 5 ? 'selected' : ''}>VIP 5 (%3.4)</option>
+                        <option value="6" ${userVip === 6 ? 'selected' : ''}>VIP 6 (%3.6)</option>
+                    </select>
+                    <button onclick="window.setVip('${user.email}', document.getElementById('vipSelect_${user.email.replace(/[.]/g, '_')}').value)">👑 VIP Ayarla</button>
                 </div>
             </div>
-        `).join("");
+        `}).join("");
         
         app.innerHTML = `
-            <h1>👑 Admin Paneli</h1>
-            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                <button onclick="window.logout()" class="danger">Çıkış</button>
+            <h1>👑 Admin Paneli - VIP Yönetim Sistemi</h1>
+            <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap:wrap;">
+                <button onclick="window.logout()" class="danger">🚪 Çıkış</button>
                 <button onclick="window.refreshData()" class="refresh-btn">🔄 Yenile</button>
             </div>
+            
             <div class="total-balance">
                 💰 TOPLAM SİSTEM BAKİYESİ
                 <span>${totalBalance.toLocaleString()} TL</span>
+                <div style="font-size:14px; margin-top:8px;">Toplam Yatırım: ${totalInvested.toLocaleString()} TL | Toplam Üye: ${userCount}</div>
             </div>
+            
+            <h2>📊 VIP İstatistikleri</h2>
+            ${vipStatsHtml}
+            
             <hr>
             <h2>💰 Bekleyen Para Yatırma Talepleri (${pendingDeposits.length})</h2>
             ${depositHtml}
+            
             <hr>
             <h2>📤 Bekleyen Para Çekme Talepleri (${pendingWithdraws.length})</h2>
             ${withdrawHtml}
+            
             <hr>
             <h2>👥 Tüm Kullanıcılar (${users.length})</h2>
+            <div style="margin-bottom:10px; font-size:12px; opacity:0.7;">
+                💡 Not: VIP seviyeleri otomatik yatırım miktarına göre belirlenir. Manuel VIP ayarlayabilirsiniz.
+            </div>
             ${userListHtml}
+            
+            <hr>
+            <div style="font-size:12px; text-align:center; opacity:0.6; margin-top:20px;">
+                VIP Komisyonları: VIP1 %2.4 | VIP2 %2.8 | VIP3 %3.0 | VIP4 %3.2 | VIP5 %3.4 | VIP6 %3.6<br>
+                Haftalık kazanç, kullanıcının bakiyesi × komisyon oranı olarak hesaplanır.
+            </div>
         `;
         
+        // Global fonksiyonlar
         window.approveDeposit = approveDepositRequest;
         window.rejectDeposit = rejectDepositRequest;
         window.approveWithdraw = approveWithdrawRequest;
@@ -430,6 +562,7 @@
         window.addBalance = addBalanceToUser;
         window.subBalance = subBalanceFromUser;
         window.giveWeekly = giveWeeklyEarning;
+        window.setVip = setUserVip;
         window.logout = () => { 
             logged = false; 
             if (unsubscribeUsers) unsubscribeUsers();
@@ -439,7 +572,7 @@
         };
         window.refreshData = async () => {
             renderAdmin();
-            alert("Veriler yenilendi!");
+            alert("✅ Veriler yenilendi!");
         };
     }
     
