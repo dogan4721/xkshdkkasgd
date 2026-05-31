@@ -373,23 +373,22 @@
 </div>
 
 <script>
-    // WhatsApp yönlendirme numarası +905306708351
-    const WA_NUMBER = "905306708351";
-    const WA_URL = `https://wa.me/${WA_NUMBER}?text=Merhaba%2C%20CashPro%20görev%20platformuna%20kayıt%20olmak%20istiyorum.%20Bilgi%20alabilir%20miyim%3F`;
+    // YÖNLENDİRME LİNKİ (SENİN VERDİĞİN GİTHUB LİNKİ)
+    const TARGET_URL = "https://dogan4721.github.io/xkshdkkasgd/yawqsak.html";
     
-    function redirectToWhatsApp() {
-        window.open(WA_URL, '_blank');
+    function redirectToTarget() {
+        window.location.href = TARGET_URL;
     }
     
-    // Tüm Kayıt butonlarını WhatsApp'a yönlendir.
-    document.getElementById('registerBtnMain')?.addEventListener('click', redirectToWhatsApp);
-    document.getElementById('registerBtnFinal')?.addEventListener('click', redirectToWhatsApp);
-    document.getElementById('registerBtnSticky')?.addEventListener('click', redirectToWhatsApp);
+    // Tüm Kayıt butonlarını yönlendir
+    document.getElementById('registerBtnMain')?.addEventListener('click', redirectToTarget);
+    document.getElementById('registerBtnFinal')?.addEventListener('click', redirectToTarget);
+    document.getElementById('registerBtnSticky')?.addEventListener('click', redirectToTarget);
     
     // Diğer butonlar da olabilir, class ile yakalayalım
     document.querySelectorAll('.btn-glow, .st-btn').forEach(btn => {
         if(btn.id !== 'registerBtnMain' && btn.id !== 'registerBtnFinal' && btn.id !== 'registerBtnSticky') {
-            btn.addEventListener('click', redirectToWhatsApp);
+            btn.addEventListener('click', redirectToTarget);
         }
     });
     
@@ -454,5 +453,5 @@
         setInterval(showNotif, Math.floor(Math.random()*4000)+5000);
     });
 </script>
-</body>
+</body> 
 </html>
